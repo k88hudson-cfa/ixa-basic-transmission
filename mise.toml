@@ -1,2 +1,8 @@
+[tools]
+"cargo:cargo-nextest" = "latest"
+
 [tasks.dev]
 run = "cargo run"
+
+[tasks.test]
+run = "cargo nextest run"

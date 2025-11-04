@@ -1,20 +1,23 @@
-use crate::ModelContext;
-use crate::forecast;
-use crate::rate_fn::RateFn;
-use anyhow::Result;
+use crate::ext::*;
+use crate::ixa_plus::rate_fn::*;
 use ixa::{PersonPropertyChangeEvent, prelude::*};
-use rand_distr::Binomial;
 use serde::{Deserialize, Serialize};
 
 define_rng!(InfectionRng);
-
 define_person_property_with_default!(InfectionStatus, I, I::Susceptible);
 
-// define_rate!(InfectiousRate, |context, person_id| {
-//     let params = context.param_infection_rate().clone();
-//     let rate: RateFn = params.try_into().unwrap();
-//     rate
-// });
+pub struct InfectionRate;
+impl PerPersonRate for InfectionRate {
+    fn assign(context: &impl ModelContext) {
+        let r_distr = context.param_infection_rate();
+        let duration_distr = context.param_infection_duration();
+        let params = ConstantRateParams {
+            r: context.sample_distr(InfectionRng, r_distr),
+            infection_duration: context.sample_distr(InfectionRng, duration_distr),
+        };
+        RateFn::ConstantRate(params.try_into().unwrap())
+    }
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub enum I {
@@ -44,6 +47,7 @@ impl I {
     fn is_infectious(&self) -> bool {
         matches!(self, I::Infectious { .. })
     }
+    #[allow(dead_code)]
     fn is_recovered(&self) -> bool {
         matches!(self, I::Recovered { .. })
     }
@@ -53,10 +57,12 @@ pub trait InfectionManagerExt: ModelContext {
     fn is_susceptible(&self, person_id: PersonId) -> bool {
         self.get_person_property(person_id, InfectionStatus) == I::Susceptible
     }
+    #[allow(dead_code)]
     fn is_infectious(&self, person_id: PersonId) -> bool {
         self.get_person_property(person_id, InfectionStatus)
             .is_infectious()
     }
+    #[allow(dead_code)]
     fn is_recovered(&self, person_id: PersonId) -> bool {
         self.get_person_property(person_id, InfectionStatus)
             .is_recovered()
@@ -79,6 +85,7 @@ pub trait InfectionManagerExt: ModelContext {
             }
         }
     }
+
     fn start_infection_propagation_loop(&mut self) {
         // Subscribe to the person becoming infectious to trigger the infection propagation loop
         self.subscribe_to_event(
@@ -91,11 +98,44 @@ pub trait InfectionManagerExt: ModelContext {
             },
         );
     }
+
+    fn forecast_next_infection_time(
+        context: &impl PluginContext,
+        person_id: PersonId,
+    ) -> Option<Forecast> {
+        // Get the person's individual infectiousness
+        let rate_fn = context.get_person_rate_fn(person_id, InfectionRate);
+        // This scales infectiousness by the maximum possible infectiousness across all settings
+        let scale = max_total_infectiousness_multiplier(context, person_id);
+        let elapsed = context.get_elapsed_infection_time(person_id).ok()?;
+        let total_rate_fn = ScaledRateFn::new(*rate_fn, scale, elapsed);
+
+        // Draw an exponential and use that to determine the next time
+        let exp = Exp::new(1.0).unwrap();
+        let e = context.sample_distr(ForecastRng, exp);
+        // Note: this returns None if forecasted > infectious period
+        let t = total_rate_fn.inverse_cum_rate(e)?;
+
+        let next_time = context.get_current_time() + t;
+        let forecasted_total_infectiousness = total_rate_fn.rate(t);
+
+        if next_time && forecasted_total_infectiousness > 0.0 {
+            context.add_plan(next_time, move |context| {
+                if evaluate_forecast(context, person_id, forecasted_total_infectiousness) {
+                    self.attempt_transmission(context, person);
+                }
+                // Continue scheduling forecasts until the person recovers.
+                schedule_next_forecasted_infection(context, person);
+            });
+        }
+    }
+
     // This function should be called from the main loop whenever
     // someone is first infected. It assigns all their properties needed to
     // calculate intrinsic infectiousness
-    fn infect_person(&mut self, target_id: PersonId, source_id: PersonId) {
+    fn set_infection_status(&mut self, target_id: PersonId, source_id: PersonId) {
         let infection_time = self.get_current_time();
+        self.assign_rate(target_id, InfectionRate);
         self.set_person_property(
             target_id,
             InfectionStatus,
@@ -105,7 +145,7 @@ pub trait InfectionManagerExt: ModelContext {
             },
         );
     }
-    fn recover_person(&mut self, person_id: PersonId) {
+    fn set_recovery_status(&mut self, person_id: PersonId) {
         let recovery_time = self.get_current_time();
         let I::Infectious { infection_time, .. } =
             self.get_person_property(person_id, InfectionStatus)
@@ -121,6 +161,7 @@ pub trait InfectionManagerExt: ModelContext {
             },
         );
     }
+
     fn get_elapsed_infection_time(&self, person_id: PersonId) -> Result<f64> {
         let I::Infectious { infection_time, .. } =
             self.get_person_property(person_id, InfectionStatus)
@@ -130,4 +171,3 @@ pub trait InfectionManagerExt: ModelContext {
         Ok(self.get_current_time() - infection_time.unwrap_or(0.0))
     }
 }
-impl<T> InfectionManagerExt for T where T: ModelContext {}

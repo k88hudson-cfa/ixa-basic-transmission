@@ -1,5 +1,3 @@
-use serde::{Serialize, de::DeserializeOwned};
-
 /// Utility functions for calculating the rate of infection over time
 /// See `ScaledRateFn` for how to calculate the inverse cumulative rate for an interval starting
 /// at a time other than 0.
@@ -26,10 +24,6 @@ pub trait InfectiousnessRateFn {
     fn inverse_cum_rate(&self, events: f64) -> Option<f64>;
 
     fn infection_duration(&self) -> f64;
-}
-
-pub trait InfectiousnessRateFnParams: Serialize + DeserializeOwned + TryInto<Self::RateFn> {
-    type RateFn: InfectiousnessRateFn;
 }
 
 /// A utility for scaling and shifting an infectiousness rate function

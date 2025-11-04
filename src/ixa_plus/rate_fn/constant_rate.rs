@@ -1,5 +1,3 @@
-use crate::rate_fn::InfectiousnessRateFnParams;
-
 use super::InfectiousnessRateFn;
 use ixa::IxaError;
 use serde::{Deserialize, Serialize};
@@ -10,10 +8,6 @@ pub struct ConstantRateParams {
     pub r: f64,
     // The time after which the rate of infection becomes 0
     pub infection_duration: f64,
-}
-
-impl InfectiousnessRateFnParams for ConstantRateParams {
-    type RateFn = ConstantRate;
 }
 
 pub struct ConstantRate {

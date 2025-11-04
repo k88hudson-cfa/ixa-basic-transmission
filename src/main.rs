@@ -1,16 +1,45 @@
-mod contact_manager;
-mod distr;
 mod forecast;
 mod infection_manager;
+pub mod ixa_plus;
 mod parameters;
-mod rate_fn;
+mod transmission_manager;
 
 use infection_manager::*;
 use ixa::prelude::*;
 use parameters::*;
+use transmission_manager::*;
 
-pub trait ModelContext: PluginContext {}
-impl ModelContext for Context {}
+// #[macro_export]
+// macro_rules! define_ext {
+//     (
+//         $(#[$meta:meta])*
+//         $vis:vis trait $name:ident $(<$($generics:tt)*>)? $body:tt
+//         $(where $($bounds:tt)*)?
+//     ) => {
+//         $(#[$meta])*
+//         $vis trait $name: $($($bounds)*)? $(<$($generics)*>)? {
+//             fn describe() -> &'static str {
+//                 stringify!($name)
+//             }
+//             $body
+//         }
+//         impl <T$($(, $generics)*)?> $name$(<$($generics)*>)? for T where T: ModelContext {}
+//     };
+// }
+
+// impl<T: PluginContext + ParametersExt + TransmissionManagerExt> ModelContext for T {}
+
+pub mod ext {
+    pub use super::*;
+    pub use infection_manager::InfectionManagerExt;
+    pub use parameters::ParametersExt;
+    pub use transmission_manager::TransmissionManagerExt;
+    pub trait ModelContext {}
+    impl<T: PluginContext + ParametersExt + TransmissionManagerExt + InfectionManagerExt>
+        ModelContext for T
+    {
+    }
+}
 
 fn main() {
     let mut context = Context::new();
@@ -39,5 +68,3 @@ fn main() {
     // Run the simulation
     context.execute();
 }
-
-// Age -->

@@ -5,12 +5,15 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
-ixa = "0.4.1"
+frunk = "0.4.4"
+ixa = { rev = "33f673a", git = "https://github.com/CDCGov/ixa.git" }
 paste = "1.0.15"
 rand = "0.9.2"
 rand_distr = "0.5.1"
+seq-macro = "0.3.6"
 serde = "1.0.228"
-statrs = { rev = "5da34705b80781b907b2d14905e05f45b0b7a8ae", git ="https://github.com/statrs-dev/statrs.git"}
+statrs = { rev = "5da34705b80781b907b2d14905e05f45b0b7a8ae", git = "https://github.com/statrs-dev/statrs.git" }
 
 [dev-dependencies]
 approx = "0.5.1"
+anyhow = "1.0.100"

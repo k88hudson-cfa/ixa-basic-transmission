@@ -2,10 +2,9 @@ use ixa::prelude::*;
 use ixa::trace;
 use rand_distr::Exp;
 
-use crate::ModelContext;
-use crate::contact_manager::ContactManagerExt;
-use crate::infection_manager::InfectionManagerExt;
-use crate::rate_fn::*;
+use crate::ext::*;
+use crate::infection_manager::InfectionRate;
+use crate::ixa_plus::rate_fn::*;
 
 define_rng!(ForecastRng);
 
@@ -18,13 +17,13 @@ pub struct Forecast {
 /// for a person, given factors related to their environment, such as the number of people
 /// they come in contact with or how close they are.
 /// This is used to scale the intrinsic infectiousness function of that person.
-/// All modifiers of the infector's intrinsic infecitousness are aggregated and returned
+/// All modifiers of the infector's intrinsic infectiousness are aggregated and returned
 /// as a single float to multiply by the base total infectiousness.
 /// This assumes that transmission modifiers of total infectiousness are independent of
 /// the setting type and are linear
-pub fn calc_total_infectiousness_multiplier(
-    context: &impl ModelContext,
-    person_id: PersonId,
+pub fn calc_actual_total_infectiousness_multiplier(
+    _context: &impl PluginContext,
+    _person_id: PersonId,
 ) -> f64 {
     1.0
 }
@@ -34,43 +33,17 @@ pub fn calc_total_infectiousness_multiplier(
 /// The modifier used for intrinsic infectiousness is ignored because all modifiers must
 /// be less than or equal to one.
 pub fn max_total_infectiousness_multiplier(
-    context: &impl ModelContext,
-    person_id: PersonId,
+    _context: &impl PluginContext,
+    _person_id: PersonId,
 ) -> f64 {
     1.0
-}
-
-// Infection attempt function for a context and given `PersonId`
-pub fn infection_attempt(context: &mut impl ModelContext, person_id: PersonId) -> Option<PersonId> {
-    // Get a contact
-    let next_contact = context.get_next_contact(person_id)?;
-
-    // if the person is not susceptible, fail the attempt.
-    if !context.is_susceptible(next_contact) {
-        return None;
-    }
-
-    // Reject based on relative transmission modifiers
-
-    // if !context.sample_bool(
-    //     ForecastRng,
-    //     context.get_relative_total_transmission(next_contact),
-    // ) {
-    //     // If the rejection sample fails, return None
-    //     return None;
-    // }
-
-    // Infection succeeds
-    context.infect_person(next_contact, person_id);
-    // Return the ID of the newly infected person
-    Some(next_contact)
 }
 
 /// Forecast of the next expected infection time, and the expected rate of
 /// infection at that time.
 pub fn get_forecast(context: &impl ModelContext, person_id: PersonId) -> Option<Forecast> {
     // Get the person's individual infectiousness
-    let rate_fn = context.get_person_rate_fn(person_id, RateFnId::InfectionRate);
+    let rate_fn = context.get_person_rate_fn(person_id, InfectionRate);
     // This scales infectiousness by the maximum possible infectiousness across all settings
     let scale = max_total_infectiousness_multiplier(context, person_id);
     let elapsed = context.get_elapsed_infection_time(person_id).ok()?;
@@ -98,9 +71,9 @@ pub fn evaluate_forecast(
     person_id: PersonId,
     forecasted_total_infectiousness: f64,
 ) -> bool {
-    let rate_fn = context.get_person_rate_fn(person_id, RateFnId::InfectionRate);
+    let rate_fn = context.get_person_rate_fn(person_id, InfectionRate);
 
-    let total_multiplier = calc_total_infectiousness_multiplier(context, person_id);
+    let total_multiplier = calc_actual_total_infectiousness_multiplier(context, person_id);
     let total_rate_fn = ScaledRateFn::new(*rate_fn, total_multiplier, 0.0);
 
     let elapsed_t = context.get_elapsed_infection_time(person_id).unwrap();
@@ -128,28 +101,12 @@ pub fn evaluate_forecast(
     true
 }
 
-pub fn schedule_next_forecasted_infection(context: &mut impl ModelContext, person: PersonId) {
-    if let Some(Forecast {
-        next_time,
-        forecasted_total_infectiousness,
-    }) = get_forecast(context, person)
-    {
-        context.add_plan(next_time, move |context| {
-            if evaluate_forecast(context, person, forecasted_total_infectiousness) {
-                infection_attempt(context, person);
-            }
-            // Continue scheduling forecasts until the person recovers.
-            schedule_next_forecasted_infection(context, person);
-        });
-    }
-}
-
-pub fn schedule_recovery(context: &mut impl ModelContext, person: PersonId) {
+pub fn schedule_recovery(context: &mut impl PluginContext, person: PersonId) {
     let infection_duration = context
-        .get_person_rate_fn(person, RateFnId::InfectionRate)
+        .get_person_rate_fn(person, InfectionRate)
         .infection_duration();
     let recovery_time = context.get_current_time() + infection_duration;
     context.add_plan(recovery_time, move |context| {
-        context.recover_person(person);
+        context.set_recovery_status(person);
     });
 }

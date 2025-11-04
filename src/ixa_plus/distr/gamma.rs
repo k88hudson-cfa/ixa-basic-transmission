@@ -1,6 +1,25 @@
 pub use super::distribution::{ContinuousUnivariate, Distribution};
+pub use crate::gamma;
 use serde::{Deserialize, Serialize};
 use statrs::distribution::{self as sd, Continuous, ContinuousCDF};
+
+#[macro_export]
+macro_rules! gamma {
+    (shape = $shape:expr, scale = $scale:expr) => {
+        $crate::ixa_plus::distr::gamma::GammaParams::Scale {
+            shape: $shape,
+            scale: $scale,
+        }
+        .try_into()
+    };
+    (shape = $shape:expr, rate = $rate:expr) => {
+        $crate::ixa_plus::distr::gamma::GammaParams::Rate {
+            shape: $shape,
+            rate: $rate,
+        }
+        .try_into()
+    };
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 #[serde(untagged)]
@@ -40,7 +59,6 @@ impl Gamma {
             distr: params.clone().try_into()?,
         })
     }
-
     pub fn rate(&self) -> f64 {
         match self.params {
             GammaParams::Rate { rate, .. } => rate,
@@ -52,6 +70,13 @@ impl Gamma {
             GammaParams::Rate { rate, .. } => 1.0 / rate,
             GammaParams::Scale { scale, .. } => scale,
         }
+    }
+}
+
+// Mirror trait methods for convenience
+impl Gamma {
+    pub fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> f64 {
+        <Self as Distribution<f64>>::sample(self, rng)
     }
 }
 
