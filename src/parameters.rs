@@ -8,9 +8,17 @@ use serde::{Deserialize, Serialize};
 
 define_parameters! {
     pub struct Params {
+        population_size: usize {
+            default: 1000,
+            validate(value) {
+                if *value == 0 {
+                    bail!("population_size must be greater than 0");
+                }
+            }
+        },
         /// The proportion of initial people who are infectious when we seed the population.
         /// as a number between 0 and 1.
-        initial_incidence: f64 {
+        p_initial_incidence: f64 {
             default: 1.0,
             validate(value) {
                 if *value < 0.0 || *value > 1.0 {
@@ -21,7 +29,7 @@ define_parameters! {
 
         /// The proportion of people that are initially recovered (fully immune to disease)
         /// as a number between 0 and 1.
-        initial_recovered: f64 {
+        p_initial_recovered: f64 {
             default: 0.0,
             validate(value) {
                 if *value < 0.0 || *value > 1.0 {

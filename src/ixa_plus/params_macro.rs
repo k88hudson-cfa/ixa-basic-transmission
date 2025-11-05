@@ -106,7 +106,7 @@ macro_rules! define_parameters {
 
             ixa::define_global_property!(GlobalParams, $name);
 
-            pub trait ParametersExt {
+            pub trait ParametersExt: ixa::PluginContext {
                 fn params(&self) -> &Params {
                     self.get_global_property_value(GlobalParams)
                         .expect("Expected GlobalParams to be set")
@@ -119,6 +119,7 @@ macro_rules! define_parameters {
                     }
                 )*
             }
+            impl<C> ParametersExt for C where C: PluginContext {}
         }
     };
 }

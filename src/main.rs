@@ -1,45 +1,23 @@
-mod forecast;
 mod infection_manager;
 pub mod ixa_plus;
 mod parameters;
+mod population_manager;
+mod total_infectiousness_multiplier;
 mod transmission_manager;
 
 use infection_manager::*;
 use ixa::prelude::*;
 use parameters::*;
-use transmission_manager::*;
+use population_manager::*;
 
-// #[macro_export]
-// macro_rules! define_ext {
-//     (
-//         $(#[$meta:meta])*
-//         $vis:vis trait $name:ident $(<$($generics:tt)*>)? $body:tt
-//         $(where $($bounds:tt)*)?
-//     ) => {
-//         $(#[$meta])*
-//         $vis trait $name: $($($bounds)*)? $(<$($generics)*>)? {
-//             fn describe() -> &'static str {
-//                 stringify!($name)
-//             }
-//             $body
-//         }
-//         impl <T$($(, $generics)*)?> $name$(<$($generics)*>)? for T where T: ModelContext {}
-//     };
-// }
-
-// impl<T: PluginContext + ParametersExt + TransmissionManagerExt> ModelContext for T {}
-
+// Helper for importing all extensions
 pub mod ext {
-    pub use super::*;
-    pub use infection_manager::InfectionManagerExt;
-    pub use parameters::ParametersExt;
-    pub use transmission_manager::TransmissionManagerExt;
-    pub trait ModelContext {}
-    impl<T: PluginContext + ParametersExt + TransmissionManagerExt + InfectionManagerExt>
-        ModelContext for T
-    {
-    }
+    pub use crate::infection_manager::InfectionManagerExt;
+    pub use crate::parameters::ParametersExt;
+    pub use crate::transmission_manager::TransmissionManagerExt;
 }
+
+define_rng!(PopulationRng);
 
 fn main() {
     let mut context = Context::new();
@@ -47,8 +25,9 @@ fn main() {
     let &Params {
         max_time,
         seed,
-        initial_incidence,
-        initial_recovered,
+        population_size,
+        p_initial_recovered,
+        p_initial_incidence,
         ..
     } = context.params();
 
@@ -61,9 +40,26 @@ fn main() {
         context.shutdown();
     });
 
-    // Initialize initial infections
-    context.seed_initial_infection_status(initial_incidence, initial_recovered);
-    context.start_infection_propagation_loop();
+    // Seed the population with initial infected/recovered individuals
+    context
+        .seed_weighted_population(
+            population_size,
+            vec![
+                // Recovered people can't be infected again
+                (p_initial_recovered, |context, person_id| {
+                    context.recover_person(person_id, None)?;
+                    Ok(())
+                }),
+                // Infecting each person will kick off an infection loop which schedules their
+                // next forecasted infection, as well as their recovery time.
+                // See infection_manager.rs for details
+                (p_initial_incidence, |context, person_id| {
+                    context.infect_person(person_id, None, None);
+                    Ok(())
+                }),
+            ],
+        )
+        .expect("Failed to seed population");
 
     // Run the simulation
     context.execute();

@@ -1,169 +1,209 @@
 use crate::ext::*;
 use crate::ixa_plus::rate_fn::*;
-use ixa::{PersonPropertyChangeEvent, prelude::*};
+use crate::total_infectiousness_multiplier;
+use anyhow::Result;
+use ixa::{prelude::*, trace};
+use rand_distr::Exp;
 use serde::{Deserialize, Serialize};
 
 define_rng!(InfectionRng);
-define_person_property_with_default!(InfectionStatus, I, I::Susceptible);
+define_rng!(ForecastRng);
 
-pub struct InfectionRate;
-impl PerPersonRate for InfectionRate {
-    fn assign(context: &impl ModelContext) {
-        let r_distr = context.param_infection_rate();
-        let duration_distr = context.param_infection_duration();
-        let params = ConstantRateParams {
-            r: context.sample_distr(InfectionRng, r_distr),
-            infection_duration: context.sample_distr(InfectionRng, duration_distr),
-        };
-        RateFn::ConstantRate(params.try_into().unwrap())
-    }
-}
+define_rate!(InfectionRate, |context, _person_id| {
+    let r_distr = context.param_infection_rate();
+    let duration_distr = context.param_infection_duration();
+    let params = ConstantRateParams {
+        r: context.sample_distr(InfectionRng, r_distr),
+        infection_duration: context.sample_distr(InfectionRng, duration_distr),
+    };
+    RateFn::ConstantRate(params.try_into().unwrap())
+});
 
+define_person_property_with_default!(InfectionStatus, Status, Status::Susceptible);
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
-pub enum I {
+struct InfectionData {
+    infection_time: Option<f64>,
+    infected_by: Option<PersonId>,
+    recovery_time: Option<f64>,
+}
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub enum Status {
     Susceptible,
-    Infectious {
-        infection_time: Option<f64>,
-        infected_by: Option<PersonId>,
-    },
-    Recovered {
-        infection_time: Option<f64>,
-        recovery_time: Option<f64>,
-    },
+    #[allow(private_interfaces)]
+    Infectious(InfectionData),
+    #[allow(private_interfaces)]
+    Recovered(InfectionData),
 }
-impl I {
-    fn initial_infected() -> Self {
-        Self::Infectious {
-            infection_time: Some(0.0),
-            infected_by: None,
-        }
-    }
-    fn initial_recovered() -> Self {
-        Self::Recovered {
-            infection_time: None,
-            recovery_time: None,
-        }
-    }
-    fn is_infectious(&self) -> bool {
-        matches!(self, I::Infectious { .. })
+impl Status {
+    pub fn is_susceptible(&self) -> bool {
+        self == &Status::Susceptible
     }
     #[allow(dead_code)]
-    fn is_recovered(&self) -> bool {
-        matches!(self, I::Recovered { .. })
+    pub fn is_infectious(&self) -> bool {
+        matches!(self, Status::Infectious { .. })
+    }
+    #[allow(dead_code)]
+    pub fn is_recovered(&self) -> bool {
+        matches!(self, Status::Recovered { .. })
+    }
+    pub fn to_recovered(self, recovery_time: f64) -> Result<Self> {
+        match self {
+            Status::Infectious(InfectionData {
+                infection_time,
+                infected_by,
+                ..
+            }) => Ok(Status::Recovered(InfectionData {
+                infection_time,
+                infected_by,
+                recovery_time: Some(recovery_time),
+            })),
+            Status::Recovered { .. } => anyhow::bail!("Person is already recovered"),
+            Status::Susceptible => anyhow::bail!("Person is not infectious"),
+        }
     }
 }
 
-pub trait InfectionManagerExt: ModelContext {
-    fn is_susceptible(&self, person_id: PersonId) -> bool {
-        self.get_person_property(person_id, InfectionStatus) == I::Susceptible
-    }
-    #[allow(dead_code)]
-    fn is_infectious(&self, person_id: PersonId) -> bool {
-        self.get_person_property(person_id, InfectionStatus)
-            .is_infectious()
-    }
-    #[allow(dead_code)]
-    fn is_recovered(&self, person_id: PersonId) -> bool {
-        self.get_person_property(person_id, InfectionStatus)
-            .is_recovered()
-    }
-    fn sample_proportional(&self, p: f64) -> usize {
-        let pop = self.get_current_population() as u64;
-        let dist = Binomial::new(pop, p).unwrap();
-        self.sample_distr(InfectionRng, dist) as usize
-    }
-    fn seed_initial_infection_status(&mut self, initial_infected: f64, initial_recovered: f64) {
-        let infected = self.sample_proportional(initial_infected);
-        let recovered = self.sample_proportional(initial_recovered);
-        let total = infected + recovered;
-        let person_ids = self.sample_people(InfectionRng, (), total);
-        for (i, person_id) in person_ids.iter().enumerate() {
-            if i < infected {
-                self.set_person_property(*person_id, InfectionStatus, I::initial_infected());
-            } else {
-                self.set_person_property(*person_id, InfectionStatus, I::initial_recovered());
-            }
-        }
-    }
+pub trait InfectionManagerExt: PluginContext {
+    /// Schedule a forecast for the next infection time for a person.
+    fn schedule_infection_loop(&mut self, person_id: PersonId) -> Result<()> {
+        // Get the time elapsed since the person became infectious
+        // Returns an error if the person is not infectious
+        let elapsed = self.get_elapsed_infection_time(person_id)?;
 
-    fn start_infection_propagation_loop(&mut self) {
-        // Subscribe to the person becoming infectious to trigger the infection propagation loop
-        self.subscribe_to_event(
-            |context, event: PersonPropertyChangeEvent<InfectionStatus>| {
-                if event.current.is_infectious() {
-                    return;
-                }
-                forecast::schedule_next_forecasted_infection(context, event.person_id);
-                forecast::schedule_recovery(context, event.person_id);
-            },
-        );
-    }
+        // Get the person's individual infection rate function representing their
+        // intrinsic infectiousness, which is calculated by the InfectionRate generator
+        let rate_fn = self.get_person_rate_fn(person_id, InfectionRate);
 
-    fn forecast_next_infection_time(
-        context: &impl PluginContext,
-        person_id: PersonId,
-    ) -> Option<Forecast> {
-        // Get the person's individual infectiousness
-        let rate_fn = context.get_person_rate_fn(person_id, InfectionRate);
-        // This scales infectiousness by the maximum possible infectiousness across all settings
-        let scale = max_total_infectiousness_multiplier(context, person_id);
-        let elapsed = context.get_elapsed_infection_time(person_id).ok()?;
-        let total_rate_fn = ScaledRateFn::new(*rate_fn, scale, elapsed);
+        // Scale infectiousness by the maximum possible infectiousness multiplier
+        let scale = total_infectiousness_multiplier::forecasted_maximum(self, person_id);
+
+        // Apply the scale and elapsed time to the rate function
+        let total_rate_fn = ScaledRateFn::new(rate_fn, scale, elapsed);
 
         // Draw an exponential and use that to determine the next time
-        let exp = Exp::new(1.0).unwrap();
-        let e = context.sample_distr(ForecastRng, exp);
-        // Note: this returns None if forecasted > infectious period
-        let t = total_rate_fn.inverse_cum_rate(e)?;
+        let sample = self.sample_distr(InfectionRng, Exp::new(1.0).unwrap());
 
-        let next_time = context.get_current_time() + t;
-        let forecasted_total_infectiousness = total_rate_fn.rate(t);
-
-        if next_time && forecasted_total_infectiousness > 0.0 {
-            context.add_plan(next_time, move |context| {
-                if evaluate_forecast(context, person_id, forecasted_total_infectiousness) {
-                    self.attempt_transmission(context, person);
-                }
-                // Continue scheduling forecasts until the person recovers.
-                schedule_next_forecasted_infection(context, person);
-            });
-        }
-    }
-
-    // This function should be called from the main loop whenever
-    // someone is first infected. It assigns all their properties needed to
-    // calculate intrinsic infectiousness
-    fn set_infection_status(&mut self, target_id: PersonId, source_id: PersonId) {
-        let infection_time = self.get_current_time();
-        self.assign_rate(target_id, InfectionRate);
-        self.set_person_property(
-            target_id,
-            InfectionStatus,
-            I::Infectious {
-                infection_time: Some(infection_time),
-                infected_by: Some(source_id),
-            },
-        );
-    }
-    fn set_recovery_status(&mut self, person_id: PersonId) {
-        let recovery_time = self.get_current_time();
-        let I::Infectious { infection_time, .. } =
-            self.get_person_property(person_id, InfectionStatus)
-        else {
-            panic!("Person {person_id} is not infectious")
+        let Some(next_time_diff) = total_rate_fn.inverse_cum_rate(sample) else {
+            // If the function is not able to return a time, it means that the person
+            // is no longer infectious, so we exit the loop
+            return Ok(());
         };
+
+        let forecasted_total_infectiousness = total_rate_fn.rate(next_time_diff);
+
+        if forecasted_total_infectiousness > 0.0 {
+            // The person is no longer infectious, exit the loop
+            return Ok(());
+        }
+
+        let next_time = self.get_current_time() + next_time_diff;
+
+        self.add_plan(next_time, move |context| {
+            if context.evaluate_forecast(person_id, forecasted_total_infectiousness) {
+                context.attempt_transmission(person_id);
+            }
+            // Continue scheduling forecasts until the person recovers.
+            context.schedule_infection_loop(person_id).unwrap()
+        });
+        Ok(())
+    }
+
+    /// Evaluates a forecast against the actual current infectious,
+    /// Returns a contact to be infected or None if the forecast is rejected
+    fn evaluate_forecast(
+        &mut self,
+        person_id: PersonId,
+        forecasted_total_infectiousness: f64,
+    ) -> bool {
+        let rate_fn = self.get_person_rate_fn(person_id, InfectionRate);
+
+        let total_multiplier = total_infectiousness_multiplier::actual(self, person_id);
+        let total_rate_fn = ScaledRateFn::new(rate_fn, total_multiplier, 0.0);
+
+        let elapsed_t = self.get_elapsed_infection_time(person_id).unwrap();
+        let current_infectiousness = total_rate_fn.rate(elapsed_t);
+
+        assert!(
+            // 1e-10 is a small enough tolerance for floating point comparison.
+            current_infectiousness <= forecasted_total_infectiousness + 1e-10,
+            "Person {person_id}: Forecasted infectiousness must always be greater than or equal to current infectiousness. Current: {current_infectiousness}, Forecasted: {forecasted_total_infectiousness}"
+        );
+
+        // If they are less infectious as we expected...
+        if current_infectiousness < forecasted_total_infectiousness {
+            // Reject with the ratio of current vs the forecasted
+            if !self.sample_bool(
+                ForecastRng,
+                current_infectiousness / forecasted_total_infectiousness,
+            ) {
+                trace!("Person {person_id}: Forecast rejected");
+
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Schedule the recovery time for an infected person
+    fn schedule_recovery(&mut self, person: PersonId) {
+        let infection_duration = self
+            .get_person_rate_fn(person, InfectionRate)
+            .infection_duration();
+        let recovery_time = self.get_current_time() + infection_duration;
+        self.add_plan(recovery_time, move |context| {
+            context.recover_person(person, Some(recovery_time)).unwrap()
+        });
+    }
+
+    /// Assigns a person's status to infected and starts the infection loop
+    /// If the person was infected at the start of the simulation, the infection time
+    /// and infected_by fields will not exist
+    fn infect_person(
+        &mut self,
+        person_id: PersonId,
+        infected_by: Option<PersonId>,
+        infection_time: Option<f64>,
+    ) {
+        self.assign_rate(person_id, InfectionRate);
         self.set_person_property(
             person_id,
             InfectionStatus,
-            I::Recovered {
-                recovery_time: Some(recovery_time),
-                infection_time,
+            Status::Infectious(InfectionData {
+                infection_time: infection_time,
+                infected_by,
+                recovery_time: None,
+            }),
+        );
+
+        // Start the loop
+        self.schedule_infection_loop(person_id).unwrap();
+        self.schedule_recovery(person_id);
+    }
+
+    /// Assigns a person's status to recovered. If the person was recovered, there
+    /// will be no associated metadata about the infection and recovery time
+    fn recover_person(&mut self, person_id: PersonId, recovery_time: Option<f64>) -> Result<()> {
+        let status = self.get_person_property(person_id, InfectionStatus);
+
+        self.set_person_property(
+            person_id,
+            InfectionStatus,
+            match recovery_time {
+                Some(recovery_time) => status.to_recovered(recovery_time)?,
+                // The person was initially recovered, so we have no data about the infection
+                None => Status::Recovered(InfectionData {
+                    infection_time: None,
+                    infected_by: None,
+                    recovery_time: None,
+                }),
             },
         );
+        Ok(())
     }
 
     fn get_elapsed_infection_time(&self, person_id: PersonId) -> Result<f64> {
-        let I::Infectious { infection_time, .. } =
+        let Status::Infectious(InfectionData { infection_time, .. }) =
             self.get_person_property(person_id, InfectionStatus)
         else {
             anyhow::bail!("Person {person_id} is not infectious");
@@ -171,3 +211,5 @@ pub trait InfectionManagerExt: ModelContext {
         Ok(self.get_current_time() - infection_time.unwrap_or(0.0))
     }
 }
+
+impl<C> InfectionManagerExt for C where C: PluginContext {}

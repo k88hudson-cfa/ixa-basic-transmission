@@ -1,4 +1,4 @@
-use crate::ext::*;
+use crate::{ext::*, infection_manager::InfectionStatus};
 use ixa::prelude::*;
 
 define_rng!(ContactRng);
@@ -20,30 +20,37 @@ pub trait TransmissionManagerExt: PluginContext {
         contact_id
     }
     // Infection attempt function for a context and given `PersonId`
-    fn infection_attempt(&mut self, infected: PersonId) -> Option<PersonId> {
+    fn attempt_transmission(&mut self, infector: PersonId) -> Option<PersonId> {
         // Get a contact
-        let next_contact = self.get_next_contact(infected)?;
+        let next_contact = self.get_next_contact(infector)?;
 
         // if the person is not susceptible, fail the attempt.
-        if !self.is_susceptible(next_contact) {
+        if !self
+            .get_person_property(next_contact, InfectionStatus)
+            .is_susceptible()
+        {
             return None;
         }
 
         // Reject based on relative transmission modifiers
         if !self.sample_bool(
             TransmissionRng,
-            self.get_relative_total_transmission(infected, next_contact),
+            self.get_relative_total_transmission(infector, next_contact),
         ) {
             // If the rejection sample fails, return None
             return None;
         }
 
         // Infection succeeds
-        self.set_infection_status(next_contact, infected);
+        self.infect_person(next_contact, Some(infector), Some(self.get_current_time()));
         // Return the ID of the newly infected person
         Some(next_contact)
     }
-    fn get_relative_total_transmission(&self, infected: PersonId, infectee: PersonId) -> f64 {
+
+    // Apply any modifiers that impact transmission
+    fn get_relative_total_transmission(&self, infector: PersonId, infectee: PersonId) -> f64 {
         1.0
     }
 }
+
+impl<C> TransmissionManagerExt for C where C: PluginContext {}

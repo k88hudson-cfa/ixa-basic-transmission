@@ -628,7 +628,6 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 [[package]]
 name = "ixa"
 version = "0.4.1"
-source = "git+https://github.com/CDCGov/ixa.git?rev=33f673a#33f673a45c7e0e83244c0e09e5103c04185eb0a3"
 dependencies = [
  "anyhow",
  "approx",
@@ -675,13 +674,13 @@ dependencies = [
  "rand_distr",
  "seq-macro",
  "serde",
+ "sorted-hlist",
  "statrs",
 ]
 
 [[package]]
 name = "ixa-derive"
 version = "0.0.3"
-source = "git+https://github.com/CDCGov/ixa.git?rev=33f673a#33f673a45c7e0e83244c0e09e5103c04185eb0a3"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -1178,6 +1177,15 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+
+[[package]]
+name = "sorted-hlist"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3b3c9d254b6644002aecb837882062fbca9af420d2cd4c2f0e4da248d80571b"
+dependencies = [
+ "typenum",
+]
 
 [[package]]
 name = "statrs"
