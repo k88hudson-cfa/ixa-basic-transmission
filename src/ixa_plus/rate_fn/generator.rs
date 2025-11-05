@@ -1,9 +1,7 @@
 use super::InfectiousnessRateFn;
 use super::RateFn;
-use crate::ixa_plus::person_vec::PersonVec;
-use crate::ixa_plus::type_index::TypeIndex;
-use crate::ixa_plus::type_index::TypeIndexCategory;
-use crate::ixa_plus::type_index::TypeIndexMap;
+use crate::ixa_plus::type_index::{TypeIndex, TypeIndexCategory, TypeIndexMap};
+use ixa::HashMap;
 use ixa::prelude::*;
 
 impl TypeIndexCategory for RateFn {}
@@ -13,7 +11,8 @@ pub trait RateFnGenerator<C: PluginContext>: Clone {
     fn assign(&self, context: &C, person_id: PersonId) -> RateFn;
 }
 pub struct RateFnDataContainer {
-    per_person_rates: TypeIndexMap<RateFn, PersonVec<usize>>,
+    // TODO: When we have access to PersonId index, we can make this a PersonVec
+    per_person_rates: TypeIndexMap<RateFn, HashMap<PersonId, usize>>,
     rate_instances: Vec<RateFn>,
 }
 
@@ -39,11 +38,11 @@ impl RateFnDataContainer {
         let index = self.add_instance(instance);
         let person_vec = self
             .per_person_rates
-            .get_mut_or_insert::<G>(PersonVec::new());
-        person_vec.set(person_id, index);
+            .get_mut_or_insert::<G>(HashMap::default());
+        person_vec.insert(person_id, index);
     }
     pub fn get_rate_fn<T: TypeIndex<RateFn>>(&self, person_id: PersonId) -> Option<&RateFn> {
-        let index = self.per_person_rates.get::<T>()?.get(person_id)?;
+        let index = self.per_person_rates.get::<T>()?.get(&person_id)?;
         self.rate_instances.get(*index)
     }
 }

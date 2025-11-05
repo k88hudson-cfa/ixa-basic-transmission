@@ -16,7 +16,7 @@ define_parameters! {
         /// The proportion of initial people who are infectious when we seed the population.
         /// as a number between 0 and 1.
         p_initial_incidence: f64 {
-            default: 1.0,
+            default: 0.1,
             validate(value) {
                 if *value < 0.0 || *value > 1.0 {
                     bail!("initial_incidence must be between 0 and 1");

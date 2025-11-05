@@ -48,7 +48,7 @@ pub trait TransmissionManagerExt: PluginContext {
     }
 
     // Apply any modifiers that impact transmission
-    fn get_relative_total_transmission(&self, infector: PersonId, infectee: PersonId) -> f64 {
+    fn get_relative_total_transmission(&self, _infector: PersonId, _infectee: PersonId) -> f64 {
         1.0
     }
 }

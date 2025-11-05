@@ -2,7 +2,9 @@
 "cargo:cargo-nextest" = "latest"
 
 [tasks.dev]
+description = "Run the model in development mode (slower, but has logging enabled)"
 run = "cargo run"
 
 [tasks.test]
+description = "Run the tests"
 run = "cargo nextest run"

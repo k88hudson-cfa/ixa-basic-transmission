@@ -21,6 +21,13 @@ macro_rules! define_parameters {
             )*
         }
 
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                let json = toml::to_string(&self).unwrap();
+                write!(f, "{}", json)
+            }
+        }
+
         paste::paste! {
             pub struct [<$name Builder>] {
                 $(
@@ -107,6 +114,13 @@ macro_rules! define_parameters {
             ixa::define_global_property!(GlobalParams, $name);
 
             pub trait ParametersExt: ixa::PluginContext {
+                fn use_default_params(&mut self) -> &Params {
+                    self.set_global_property_value(GlobalParams, $name::default()).expect("Failed to set GlobalParams to default");
+                    self.params()
+                }
+                fn set_params(&mut self, params: $name) {
+                    self.set_global_property_value(GlobalParams, params).expect("Failed to set GlobalParams");
+                }
                 fn params(&self) -> &Params {
                     self.get_global_property_value(GlobalParams)
                         .expect("Expected GlobalParams to be set")
