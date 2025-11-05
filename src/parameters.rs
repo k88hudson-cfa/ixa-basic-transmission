@@ -1,7 +1,4 @@
-use crate::{
-    ext::*,
-    ixa_plus::{define_parameters, distr::gamma::*},
-};
+use crate::ixa_plus::{define_parameters, distr::gamma::*};
 use anyhow::{Result, bail};
 use ixa::prelude::*;
 use serde::{Deserialize, Serialize};
