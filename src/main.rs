@@ -20,11 +20,9 @@ pub mod ext {
 
 use crate::ixa_plus::params_macro::IxaParameters;
 use crate::output_manager::OutputManagerExt;
-use anyhow::Result;
 use ixa::prelude::*;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() {
     // Initialize logger
     #[cfg(debug_assertions)]
     crate::ixa_plus::log::set_log_level(crate::ixa_plus::log::LevelFilter::Debug);
@@ -34,9 +32,7 @@ async fn main() -> Result<()> {
 
     // Use mise run --params <file> to override default parameters
     let params = parameters::Params::from_args();
-    let mut context = model::setup(params)?;
+    let mut context = model::setup(params).unwrap();
     context.execute();
     context.log_stats();
-
-    Ok(())
 }
