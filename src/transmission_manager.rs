@@ -1,10 +1,11 @@
-use crate::{ext::*, infection_manager::InfectionStatus};
+use crate::simulation_event::SimulationEvent;
+use crate::{ext::*, infection_manager::InfectionStatus, output_manager::OutputManagerExt};
 use ixa::prelude::*;
 
 define_rng!(ContactRng);
 define_rng!(TransmissionRng);
 
-pub trait TransmissionManagerExt: PluginContext {
+pub trait TransmissionManagerExt: PluginContext + OutputManagerExt {
     fn get_next_contact(&self, person_id: PersonId) -> Option<PersonId> {
         let mut contact_id = None;
         // Ensure we don't return the same id
@@ -23,6 +24,12 @@ pub trait TransmissionManagerExt: PluginContext {
     fn attempt_transmission(&mut self, infector: PersonId) -> Option<PersonId> {
         // Get a contact
         let next_contact = self.get_next_contact(infector)?;
+
+        self.emit_event(SimulationEvent::Contact {
+            t: self.get_current_time(),
+            person_id: infector,
+            contact_id: next_contact,
+        });
 
         // if the person is not susceptible, fail the attempt.
         if !self
@@ -53,4 +60,4 @@ pub trait TransmissionManagerExt: PluginContext {
     }
 }
 
-impl<C> TransmissionManagerExt for C where C: PluginContext {}
+impl<C> TransmissionManagerExt for C where C: PluginContext + OutputManagerExt {}

@@ -3,8 +3,16 @@
 
 [tasks.dev]
 description = "Run the model in development mode (slower, but has logging enabled)"
-run = "cargo run"
+run = "cargo run -- $@"
+
+[tasks.websocket]
+description = "Run the model in websocket mode"
+run = "cargo run -- --websocket"
 
 [tasks.test]
 description = "Run the tests"
 run = "cargo nextest run"
+
+[tasks.'new:extension']
+description = "Generate a new Context extension"
+run = "bash src/ixa_plus/scripts/new_extension.sh $@"

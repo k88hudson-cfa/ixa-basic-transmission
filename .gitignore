@@ -1,1 +1,4 @@
 /target
+output/
+/.vite/
+node_modules/

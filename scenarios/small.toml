@@ -1,6 +1,0 @@
-[metadata]
-scenario_name = "Small Population Scenario"
-description = "A scenario with a small population size for testing purposes."
-
-[parameters]
-population_size = 1000

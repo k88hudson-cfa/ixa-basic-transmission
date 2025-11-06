@@ -2,13 +2,17 @@ use crate::{ext::*, parameters::Params};
 use anyhow::Result;
 use ixa::prelude::*;
 
-pub fn setup() -> Result<Context> {
+pub fn setup(params_override: Option<Params>) -> Result<Context> {
     let mut context = Context::new();
 
-    let params = context.use_default_params();
+    let params = if let Some(override_params) = params_override {
+        context.set_params(override_params)
+    } else {
+        context.use_default_params()
+    };
 
     // Log parameters
-    ixa::log::info!("\nRunning model with parameters:\n{}", params);
+    crate::ixa_plus::log::info!("\nRunning model with parameters:\n{}", params);
 
     let &Params {
         max_time,
@@ -21,6 +25,9 @@ pub fn setup() -> Result<Context> {
 
     // Set the random seed.
     context.init_random(seed);
+
+    // Initialize output capture before creating the population so we don't miss creation events.
+    context.capture_output();
 
     // Add a plan to shut down the simulation after `max_time`, regardless of
     // what else is happening in the model.
@@ -51,5 +58,6 @@ pub fn setup() -> Result<Context> {
             ),
         ],
     )?;
+
     Ok(context)
 }

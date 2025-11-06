@@ -1,3 +1,5 @@
+use crate::ixa_plus::log;
+
 #[macro_export]
 macro_rules! define_parameters {
     (
@@ -20,6 +22,8 @@ macro_rules! define_parameters {
                 pub $field_name: $field_type,
             )*
         }
+
+        impl $crate::ixa_plus::params_macro::IxaParameters for $name {}
 
         impl std::fmt::Display for $name {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -65,6 +69,7 @@ macro_rules! define_parameters {
                         let $validate_arg = _value;
                         $validate_body
                         )?)?
+
                         Ok(())
                     }
 
@@ -118,8 +123,9 @@ macro_rules! define_parameters {
                     self.set_global_property_value(GlobalParams, $name::default()).expect("Failed to set GlobalParams to default");
                     self.params()
                 }
-                fn set_params(&mut self, params: $name) {
+                fn set_params(&mut self, params: $name) -> &Params {
                     self.set_global_property_value(GlobalParams, params).expect("Failed to set GlobalParams");
+                    self.params()
                 }
                 fn params(&self) -> &Params {
                     self.get_global_property_value(GlobalParams)
@@ -136,4 +142,37 @@ macro_rules! define_parameters {
             impl<C> ParametersExt for C where C: PluginContext {}
         }
     };
+}
+
+pub trait IxaParameters: Sized + serde::Serialize + serde::de::DeserializeOwned {
+    fn from_args() -> Option<Self> {
+        let args = std::env::args().collect::<Vec<_>>();
+        // File --params <path>
+        let mut prev_arg: Option<&str> = None;
+        for arg in &args[1..] {
+            if let Some(prev) = prev_arg {
+                if prev == "--params" {
+                    return Some(
+                        Self::try_from_file(arg).expect("Could not parse parameters from file"),
+                    );
+                }
+            }
+            prev_arg = Some(arg);
+        }
+        None
+    }
+    // Parse parameters from toml or json
+    fn try_from_file<P: AsRef<std::path::Path>>(path: P) -> anyhow::Result<Self> {
+        let contents = std::fs::read_to_string(&path)
+            .map_err(|e| anyhow::anyhow!("{}: {}", path.as_ref().display(), e))?;
+        let params: Self = if path.as_ref().extension().and_then(|s| s.to_str()) == Some("json") {
+            serde_json::from_str(&contents)?
+        } else if path.as_ref().extension().and_then(|s| s.to_str()) == Some("toml") {
+            log::info!("Loading parameters from file {}", path.as_ref().display());
+            toml::from_str(&contents)?
+        } else {
+            anyhow::bail!("Unsupported config file format. Use .toml or .json");
+        };
+        Ok(params)
+    }
 }
