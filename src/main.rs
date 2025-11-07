@@ -1,8 +1,9 @@
 mod infection_manager;
+mod infection_status;
 pub mod ixa_plus;
 mod model;
 mod output_manager;
-mod parameters;
+mod params;
 mod population_manager;
 mod simulation_event;
 mod total_infectiousness_multiplier;
@@ -13,7 +14,7 @@ mod transmission_manager;
 pub mod ext {
     pub use crate::infection_manager::InfectionManagerExt;
     pub use crate::output_manager::OutputManagerExt;
-    pub use crate::parameters::ParametersExt;
+    pub use crate::params::ParametersExt;
     pub use crate::population_manager::PopulationManagerExt;
     pub use crate::transmission_manager::TransmissionManagerExt;
 }
@@ -31,7 +32,7 @@ fn main() {
     crate::ixa_plus::log::init_default();
 
     // Use mise run --params <file> to override default parameters
-    let params = parameters::Params::from_args();
+    let params = params::Params::from_args();
     let mut context = model::setup(params).unwrap();
     context.execute();
     context.log_stats();

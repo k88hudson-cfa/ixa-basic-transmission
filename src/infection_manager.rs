@@ -1,11 +1,11 @@
 use crate::ext::*;
+use crate::infection_status::*;
 use crate::ixa_plus::rate_fn::*;
 use crate::simulation_event::SimulationEvent;
 use crate::total_infectiousness_multiplier;
 use anyhow::Result;
 use ixa::prelude::*;
 use rand_distr::Exp;
-use serde::{Deserialize, Serialize};
 
 define_rng!(InfectionRng);
 define_rng!(ForecastRng);
@@ -17,70 +17,9 @@ define_rate!(InfectionRate, |context, _person_id| {
         r: context.sample_distr(InfectionRng, r_distr),
         infection_duration: context.sample_distr(InfectionRng, duration_distr),
     };
+    log::trace!("Assigning infection rate: {params:?}");
     RateFn::ConstantRate(params.try_into().unwrap())
 });
-
-define_person_property_with_default!(InfectionStatus, Status, Status::Susceptible);
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
-pub struct InfectionData {
-    pub infection_time: Option<f64>,
-    pub infected_by: Option<PersonId>,
-    pub recovery_time: Option<f64>,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
-pub enum Status {
-    Susceptible,
-    #[allow(private_interfaces)]
-    Infectious(InfectionData),
-    #[allow(private_interfaces)]
-    Recovered(InfectionData),
-}
-
-#[allow(dead_code)]
-impl Status {
-    pub fn is_susceptible(&self) -> bool {
-        self == &Status::Susceptible
-    }
-    pub fn is_incidence(&self) -> bool {
-        self.is_infectious() && self.infection_time().is_some()
-    }
-    pub fn infection_time(&self) -> Option<f64> {
-        match self {
-            Status::Infectious(InfectionData { infection_time, .. }) => *infection_time,
-            Status::Recovered(InfectionData { infection_time, .. }) => *infection_time,
-            Status::Susceptible => None,
-        }
-    }
-    pub fn infected_by(&self) -> Option<PersonId> {
-        match self {
-            Status::Infectious(InfectionData { infected_by, .. }) => *infected_by,
-            Status::Recovered(InfectionData { infected_by, .. }) => *infected_by,
-            Status::Susceptible => None,
-        }
-    }
-    pub fn is_infectious(&self) -> bool {
-        matches!(self, Status::Infectious { .. })
-    }
-    pub fn is_recovered(&self) -> bool {
-        matches!(self, Status::Recovered { .. })
-    }
-    pub fn to_recovered(self, recovery_time: f64) -> Result<Self> {
-        match self {
-            Status::Infectious(InfectionData {
-                infection_time,
-                infected_by,
-                ..
-            }) => Ok(Status::Recovered(InfectionData {
-                infection_time,
-                infected_by,
-                recovery_time: Some(recovery_time),
-            })),
-            Status::Recovered { .. } => anyhow::bail!("Person is already recovered"),
-            Status::Susceptible => anyhow::bail!("Person is not infectious"),
-        }
-    }
-}
 
 pub trait InfectionManagerExt: PluginContext {
     /// Schedule a forecast for the next infection time for a person.
@@ -102,7 +41,9 @@ pub trait InfectionManagerExt: PluginContext {
         // Draw an exponential and use that to determine the next time
         let sample = self.sample_distr(InfectionRng, Exp::new(1.0).unwrap());
 
-        let Some(next_time_diff) = total_rate_fn.inverse_cum_rate(sample) else {
+        let next_time_diff = total_rate_fn.inverse_cum_rate(sample);
+
+        let Some(next_time_diff) = next_time_diff else {
             // If the function is not able to return a time, it means that the person
             // is no longer infectious, so we exit the loop
             return Ok(());

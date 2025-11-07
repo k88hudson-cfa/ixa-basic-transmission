@@ -1,4 +1,4 @@
-use crate::{ext::*, parameters::Params};
+use crate::{ext::*, params::Params};
 use anyhow::Result;
 use ixa::prelude::*;
 
@@ -36,7 +36,7 @@ pub fn setup(params_override: Option<Params>) -> Result<Context> {
     });
 
     // Seed the population with initial infected/recovered individuals
-    context.seed_weighted_population(
+    context.init_population(
         population_size,
         vec![
             (

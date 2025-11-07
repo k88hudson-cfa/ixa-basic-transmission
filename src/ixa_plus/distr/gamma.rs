@@ -1,7 +1,10 @@
 pub use super::distribution::{ContinuousUnivariate, Distribution};
 pub use crate::gamma;
 use serde::{Deserialize, Serialize};
-use statrs::distribution::{self as sd, Continuous, ContinuousCDF};
+use statrs::{
+    distribution::{self as sd, Continuous, ContinuousCDF},
+    statistics::Distribution as StatisticsDistribution,
+};
 
 #[macro_export]
 macro_rules! gamma {
@@ -70,6 +73,9 @@ impl Gamma {
             GammaParams::Rate { rate, .. } => 1.0 / rate,
             GammaParams::Scale { scale, .. } => scale,
         }
+    }
+    pub fn mean(&self) -> f64 {
+        self.distr.mean().unwrap()
     }
 }
 

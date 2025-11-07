@@ -9,5 +9,11 @@ cargo run
 To run the model with some parameter set:
 
 ```sh
-cargo run -- --params parameters/default.toml
+cargo run -- --params params/default.toml
+```
+
+To run tests
+
+```sh
+cargo test
 ```

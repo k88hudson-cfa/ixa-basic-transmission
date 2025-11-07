@@ -13,6 +13,11 @@ run = "cargo run -- --websocket"
 description = "Run the tests"
 run = "cargo nextest run"
 
+
+[tasks.plot]
+description = "Run the plot frontend"
+run = "python -m http.server 1979 --directory output"
+
 [tasks.'new:extension']
 description = "Generate a new Context extension"
 run = "bash src/ixa_plus/scripts/new_extension.sh $@"

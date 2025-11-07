@@ -1,5 +1,5 @@
 use crate::simulation_event::SimulationEvent;
-use crate::{ext::*, infection_manager::InfectionStatus, output_manager::OutputManagerExt};
+use crate::{ext::*, infection_status::*, output_manager::OutputManagerExt};
 use ixa::prelude::*;
 
 define_rng!(ContactRng);

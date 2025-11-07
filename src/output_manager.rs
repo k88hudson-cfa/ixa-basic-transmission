@@ -1,6 +1,5 @@
 use crate::ext::ParametersExt;
-use crate::infection_manager::InfectionStatus;
-use crate::infection_manager::Status;
+use crate::infection_status::*;
 use crate::simulation_event::SimulationEvent;
 use anyhow::Result;
 use ixa::{PersonPropertyChangeEvent, prelude::*};
@@ -9,6 +8,16 @@ use std::io::Write;
 use std::path::PathBuf;
 
 const OUTPUT_DIR: &str = "output";
+
+fn create_output_file(filename: &str) -> Result<std::fs::File> {
+    std::fs::create_dir_all(OUTPUT_DIR)
+        .and_then(|_| {
+            let mut path = PathBuf::from(OUTPUT_DIR);
+            path.push(filename);
+            std::fs::File::create(path)
+        })
+        .map_err(|e| anyhow::anyhow!("Failed to create output file: {}", e))
+}
 
 struct Counts {
     total_infections: usize,
@@ -42,22 +51,35 @@ impl Counts {
 struct OutputDataContainer {
     counts: Counts,
     json_writer: BufWriter<std::fs::File>,
+    daily_incidence_writer: ixa::csv::Writer<std::fs::File>,
+}
+
+impl OutputDataContainer {
+    fn write_daily_incidence(&mut self) {
+        self.daily_incidence_writer
+            .write_record(&["t", "incidence"])
+            .expect("Failed to write header");
+        for (day, incidence) in self.counts.daily_incidence.iter().enumerate() {
+            self.daily_incidence_writer
+                .write_record(&[day.to_string(), incidence.to_string()])
+                .expect("Failed to write daily incidence");
+        }
+    }
 }
 
 define_data_plugin!(OutputPlugin, OutputDataContainer, |context| {
-    let file = std::fs::create_dir_all(OUTPUT_DIR)
-        .and_then(|_| {
-            let mut path = PathBuf::from(OUTPUT_DIR);
-            path.push("events.jsonl");
-            std::fs::File::create(path)
-        })
-        .expect("Failed to create output file");
-    let writer = BufWriter::new(file);
+    let events_file = create_output_file("events.jsonl").unwrap();
+    let events_writer = BufWriter::new(events_file);
+
+    let csv_writer =
+        ixa::csv::Writer::from_path(PathBuf::from(OUTPUT_DIR).join("daily_incidence.csv"))
+            .expect("Failed to create incidence writer");
 
     let max_time = context.param_max_time();
     OutputDataContainer {
         counts: Counts::new(*max_time),
-        json_writer: writer,
+        json_writer: events_writer,
+        daily_incidence_writer: csv_writer,
     }
 });
 
@@ -73,12 +95,12 @@ pub trait OutputManagerExt: PluginContext {
 
                 if event.current.is_incidence() {
                     data.counts.add_infection(event.current);
-                    context
-                        .write_event(SimulationEvent::Infection {
-                            t: context.get_current_time(),
-                            person_id: event.person_id,
-                        })
-                        .expect("Failed to write event");
+
+                    let output = SimulationEvent::Infection {
+                        t: event.current.infection_time().unwrap(),
+                        person_id: event.person_id,
+                    };
+                    context.write_event(output).expect("Failed to write event");
                 }
             },
         );
@@ -93,8 +115,18 @@ pub trait OutputManagerExt: PluginContext {
         });
     }
 
-    fn log_stats(&self) {
+    fn log_stats(&mut self) {
+        self.get_data_mut(OutputPlugin).write_daily_incidence();
         let data = self.get_data(OutputPlugin);
+
+        log::info!(
+            "Expected mean infectious period: {:.3}",
+            self.param_infection_duration().mean()
+        );
+        log::info!(
+            "Expected mean infection rate: {:.3}",
+            self.param_infection_rate().mean(),
+        );
         log::info!("Total infections: {}", data.counts.total_infections);
         let attack_rate =
             data.counts.total_infections as f64 / self.get_current_population() as f64;

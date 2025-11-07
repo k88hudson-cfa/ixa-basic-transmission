@@ -10,7 +10,7 @@ define_rng!(PopulationRng);
 type AssignFn<C> = fn(&mut C, PersonId) -> Result<()>;
 
 pub trait PopulationManagerExt: PluginContext {
-    fn seed_weighted_population<T: Display>(
+    fn init_population<T: Display>(
         &mut self,
         population_size: usize,
         proportions: Vec<(f64, (T, AssignFn<Self>))>,
