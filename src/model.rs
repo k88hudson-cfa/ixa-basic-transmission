@@ -1,6 +1,6 @@
 use crate::{ext::*, params::Params};
 use anyhow::Result;
-use ixa::prelude::*;
+use ixa::preludev2::*;
 
 pub fn setup(params_override: Option<Params>) -> Result<Context> {
     let mut context = Context::new();

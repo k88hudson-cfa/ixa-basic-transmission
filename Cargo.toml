@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
-ixa = { rev = "ce7e0224ffc234525e09058c2309ee705bb53e0c", git = "https://github.com/CDCgov/ixa.git" }
+ixa = { branch = "k88hudson-extend-context-base", git = "https://github.com/CDCgov/ixa.git" }
 log = "0.4"
 env_logger = "0.11"
 log4rs = { version = "1.4.0", features = ["console_appender", "file_appender"] }

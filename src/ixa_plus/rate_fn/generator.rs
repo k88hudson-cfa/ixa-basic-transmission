@@ -2,7 +2,8 @@ use super::InfectiousnessRateFn;
 use super::RateFn;
 use crate::ixa_plus::type_index::{TypeIndex, TypeIndexCategory, TypeIndexMap};
 use ixa::HashMap;
-use ixa::prelude::*;
+use ixa::preludev2::*;
+use crate::person::*;
 
 impl TypeIndexCategory for RateFn {}
 
@@ -94,8 +95,8 @@ macro_rules! define_rate {
             fn assign(
                 &self,
                 $ctx: &C,
-                $person_id: ixa::people::PersonId,
-            ) -> crate::ixa_plus::rate_fn::RateFn {
+                $person_id: $crate::person::PersonId,
+            ) -> $crate::ixa_plus::rate_fn::RateFn {
                 $body
             }
         }

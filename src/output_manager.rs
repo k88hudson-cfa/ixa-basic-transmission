@@ -1,11 +1,11 @@
 use crate::ext::ParametersExt;
-use crate::infection_status::*;
 use crate::simulation_event::SimulationEvent;
 use anyhow::Result;
-use ixa::{PersonPropertyChangeEvent, prelude::*};
+use ixa::{preludev2::*};
 use std::io::BufWriter;
 use std::io::Write;
 use std::path::PathBuf;
+use crate::person::*;
 
 const OUTPUT_DIR: &str = "output";
 
@@ -35,7 +35,7 @@ impl Counts {
     fn add_forecast_rejection(&mut self) {
         self.forecasts_rejected += 1;
     }
-    fn add_infection(&mut self, status: Status) {
+    fn add_infection(&mut self, status: InfectionStatus) {
         self.total_infections += 1;
         if let Some(infection_time) = status.infection_time() {
             let day_index = infection_time.floor() as usize;
@@ -87,18 +87,18 @@ pub trait OutputManagerExt: PluginContext {
     fn capture_output(&mut self) {
         // Send infection events
         self.subscribe_to_event(
-            |context, event: PersonPropertyChangeEvent<InfectionStatus>| {
-                if !event.current.is_infectious() {
+            |context, event: PropertyChangeEvent<Person, InfectionStatus>| {
+                if !event.current_value.is_infectious() {
                     return;
                 }
                 let data = context.get_data_mut(OutputPlugin);
 
-                if event.current.is_incidence() {
-                    data.counts.add_infection(event.current);
+                if event.current_value.is_incidence() {
+                    data.counts.add_infection(event.current_value);
 
                     let output = SimulationEvent::Infection {
-                        t: event.current.infection_time().unwrap(),
-                        person_id: event.person_id,
+                        t: event.current_value.infection_time().unwrap(),
+                        person_id: event.entity_id,
                     };
                     context.write_event(output).expect("Failed to write event");
                 }

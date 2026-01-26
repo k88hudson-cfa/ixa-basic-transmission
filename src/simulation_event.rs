@@ -1,5 +1,6 @@
-use ixa::{IxaEvent, PersonId};
+use ixa::{IxaEvent};
 use serde::Serialize;
+use crate::person::*;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(tag = "type")]
