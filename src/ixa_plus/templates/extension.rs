@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ixa::prelude::*;
+use ixa::preludev2::*;
 
 define_rng!(EXT_NAMERng);
 

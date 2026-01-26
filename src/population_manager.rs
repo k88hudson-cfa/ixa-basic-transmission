@@ -1,9 +1,10 @@
 use crate::format_iter;
 use crate::ixa_plus::log;
 use anyhow::Result;
-use ixa::prelude::*;
+use ixa::preludev2::*;
 use rand_distr::weighted::WeightedIndex;
 use std::fmt::Display;
+use crate::person::*;
 
 define_rng!(PopulationRng);
 
@@ -35,10 +36,10 @@ pub trait PopulationManagerExt: PluginContext {
             .map(|(label, _)| (label, 0usize))
             .collect::<Vec<_>>();
         for _ in 0..population_size {
-            let person_id = self.add_person(())?;
+            let person_id = self.add_entity::<Person, _>(());
             let index = self.sample_distr(PopulationRng, &dist);
             if let Some((_, apply)) = assign_fns.get(index) {
-                apply(self, person_id)?;
+                apply(self, person_id.unwrap())?;
                 counts[index].1 += 1;
             }
         }

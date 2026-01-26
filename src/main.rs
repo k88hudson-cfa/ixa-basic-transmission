@@ -1,6 +1,6 @@
 mod infection_manager;
-mod infection_status;
 pub mod ixa_plus;
+pub mod person;
 mod model;
 mod output_manager;
 mod params;
@@ -21,7 +21,7 @@ pub mod ext {
 
 use crate::ixa_plus::params_macro::IxaParameters;
 use crate::output_manager::OutputManagerExt;
-use ixa::prelude::*;
+use ixa::preludev2::*;
 
 fn main() {
     // Initialize logger

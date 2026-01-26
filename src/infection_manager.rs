@@ -1,11 +1,11 @@
 use crate::ext::*;
-use crate::infection_status::*;
 use crate::ixa_plus::rate_fn::*;
 use crate::simulation_event::SimulationEvent;
 use crate::total_infectiousness_multiplier;
 use anyhow::Result;
-use ixa::prelude::*;
+use ixa::preludev2::*;
 use rand_distr::Exp;
+use crate::person::*;
 
 define_rng!(InfectionRng);
 define_rng!(ForecastRng);
@@ -128,10 +128,9 @@ pub trait InfectionManagerExt: PluginContext {
         infection_time: Option<f64>,
     ) {
         self.assign_rate(person_id, InfectionRate);
-        self.set_person_property(
+        self.set_property(
             person_id,
-            InfectionStatus,
-            Status::Infectious(InfectionData {
+            InfectionStatus::Infectious(InfectionData {
                 infection_time: infection_time,
                 infected_by,
                 recovery_time: None,
@@ -146,15 +145,15 @@ pub trait InfectionManagerExt: PluginContext {
     /// Assigns a person's status to recovered. If the person was recovered, there
     /// will be no associated metadata about the infection and recovery time
     fn recover_person(&mut self, person_id: PersonId, recovery_time: Option<f64>) -> Result<()> {
-        let status = self.get_person_property(person_id, InfectionStatus);
+        let status = self.get_property::<Person, InfectionStatus>(person_id);
 
-        self.set_person_property(
+        self.set_property(
             person_id,
-            InfectionStatus,
+
             match recovery_time {
                 Some(recovery_time) => status.to_recovered(recovery_time)?,
                 // The person was initially recovered, so we have no data about the infection
-                None => Status::Recovered(InfectionData {
+                None => InfectionStatus::Recovered(InfectionData {
                     infection_time: None,
                     infected_by: None,
                     recovery_time: None,
@@ -165,8 +164,8 @@ pub trait InfectionManagerExt: PluginContext {
     }
 
     fn get_elapsed_infection_time(&self, person_id: PersonId) -> Result<f64> {
-        let Status::Infectious(InfectionData { infection_time, .. }) =
-            self.get_person_property(person_id, InfectionStatus)
+        let InfectionStatus::Infectious(InfectionData { infection_time, .. }) =
+            self.get_property::<Person, InfectionStatus>(person_id)
         else {
             anyhow::bail!("Person {person_id} is not infectious");
         };

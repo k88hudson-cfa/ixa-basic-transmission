@@ -1,6 +1,7 @@
 use crate::simulation_event::SimulationEvent;
-use crate::{ext::*, infection_status::*, output_manager::OutputManagerExt};
-use ixa::prelude::*;
+use crate::{ext::*, output_manager::OutputManagerExt};
+use ixa::preludev2::*;
+use crate::person::*;
 
 define_rng!(ContactRng);
 define_rng!(TransmissionRng);
@@ -12,7 +13,7 @@ pub trait TransmissionManagerExt: PluginContext + OutputManagerExt {
         let total_people = self.get_current_population();
         if total_people > 1 {
             loop {
-                contact_id = self.sample_person(ContactRng, ());
+                contact_id = self.sample_entity::<_, Person, _>(ContactRng, ());
                 if contact_id != Some(person_id) {
                     break;
                 }
@@ -33,7 +34,7 @@ pub trait TransmissionManagerExt: PluginContext + OutputManagerExt {
 
         // if the person is not susceptible, fail the attempt.
         if !self
-            .get_person_property(next_contact, InfectionStatus)
+            .get_property::<Person, InfectionStatus>(next_contact)
             .is_susceptible()
         {
             return None;

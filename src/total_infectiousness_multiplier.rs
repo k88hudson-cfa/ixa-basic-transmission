@@ -1,4 +1,5 @@
-use ixa::prelude::*;
+use ixa::preludev2::*;
+use crate::person::*;
 
 /// Calculate the maximum possible scaling factor for total infectiousness
 /// for a person, given information we know at the time of a forecast.

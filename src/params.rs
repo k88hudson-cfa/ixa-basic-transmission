@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use crate::ixa_plus::{define_parameters, distr::gamma::*};
 use anyhow::bail;
-use ixa::prelude::*;
+use ixa::preludev2::*;
 
 define_parameters! {
     defaults: "../params/default.toml",
